@@ -6,8 +6,9 @@ const translator = shortUUID();
 
 export async function GET(request: NextRequest, context: { params: { shortId: string } }) {
   try {
-    const { shortId } = context.params;
-    const userId = request.nextUrl.searchParams.get('userId');
+    const searchParams = request.nextUrl.searchParams;
+    const shortId = context.params.shortId || searchParams.get('shortId');
+    const userId = searchParams.get('userId');
 
     if (!userId || !shortId) {
       throw new Error('요청 정보가 부족합니다.');
