@@ -8,6 +8,7 @@ import 'swiper/css/pagination';
 import type { Swiper as SwiperType } from 'swiper';
 import { ProductImage } from '@/entities/productImage/model/types';
 import Image from 'next/image';
+import ImageViewer from '@/shared/lib/ImageViewer';
 
 interface Props {
   images: ProductImage[];
@@ -16,8 +17,10 @@ interface Props {
 export default function ProductImageSlider({ images }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const swiperRef = useRef<SwiperType | null>(null);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
   const sortedImages = [...images].sort((a, b) => a.order_index - b.order_index);
+  const imageUrls = sortedImages.map((img) => img.image_url);
 
   return (
     <div className="w-full">
@@ -47,6 +50,7 @@ export default function ProductImageSlider({ images }: Props) {
                 sizes="100vw"
                 className="mx-auto"
                 priority
+                onClick={() => setIsViewerOpen(true)}
               />
             </SwiperSlide>
           ))}
@@ -80,6 +84,14 @@ export default function ProductImageSlider({ images }: Props) {
           <div key={`empty-${idx}`} className="pointer-events-none h-16 w-16 shrink-0 opacity-0" />
         ))}
       </div>
+
+      {isViewerOpen && (
+        <ImageViewer
+          images={imageUrls}
+          initialIndex={activeIndex}
+          onClose={() => setIsViewerOpen(false)}
+        />
+      )}
     </div>
   );
 }

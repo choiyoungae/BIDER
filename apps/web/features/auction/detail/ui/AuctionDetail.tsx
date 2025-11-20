@@ -24,7 +24,7 @@ const AuctionDetail = ({ data, isProductMine }: AuctionDetailContentProps) => {
       <div className="p-box flex flex-col gap-[25px]">
         <div className="flex flex-col gap-[14px]">
           <div className="typo-subtitle-bold">{data.productTitle}</div>
-          <Link href={`/product?cate=${data.productCategory}`}>
+          <Link href={`/auction?cate=${data.productCategory}`}>
             <u className="typo-caption-regular w-fit text-neutral-700">
               {getCategoryLabel(data.productCategory as CategoryValue)}
             </u>

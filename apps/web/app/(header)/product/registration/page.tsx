@@ -1,12 +1,12 @@
 import React from 'react';
-import { ProductRegistrationForm } from '@/features/product/ui/ProductRegistrationForm';
 import ReactQueryProvider from '@/shared/providers/ReactQueryProvider';
+import { ProductForm } from '@/features/product/ui/ProductForm';
 
 const ProductRegistrationPage = () => {
   return (
     <ReactQueryProvider>
       <div className="pt-[16px]">
-        <ProductRegistrationForm />
+        <ProductForm mode="create" />
       </div>
     </ReactQueryProvider>
   );

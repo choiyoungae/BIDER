@@ -1,20 +1,24 @@
+import getUserId from '@/shared/lib/getUserId';
+import { decodeShortId } from '@/shared/lib/shortUuid';
 import { supabase } from '@/shared/lib/supabaseClient';
 import { NextRequest, NextResponse } from 'next/server';
 import shortUUID from 'short-uuid';
 
 const translator = shortUUID();
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ shortId: string }> }
+) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const shortId = searchParams.get('shortId');
-    const userId = searchParams.get('userId');
+    const userId = await getUserId();
 
-    if (!userId || !shortId) {
-      throw new Error('요청 정보가 부족합니다.');
+    if (!userId) {
+      throw new Error('유저 정보가 부족합니다.');
     }
 
-    const auctionId = translator.toUUID(shortId);
+    const { shortId } = await params;
+    const auctionId = decodeShortId(shortId);
 
     const { data, error } = await supabase
       .from('auction')

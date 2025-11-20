@@ -33,9 +33,9 @@ const MakePrice = ({ userId }: { userId: string }) => {
 
   if (isLoading || error || !data) return <Loading />;
 
-  const highestBid = data.bid_price ?? data.min_price;
+  const highestBid = data.bid_history.at(-1).bid_price ?? data.min_price;
   const numericPrice = parseInt(price, 10);
-  const isValidPrice = !isNaN(numericPrice) && numericPrice >= highestBid;
+  const isValidPrice = !isNaN(numericPrice) && numericPrice > highestBid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +96,7 @@ const MakePrice = ({ userId }: { userId: string }) => {
             setPrice(rawValue);
 
             const parsed = parseInt(rawValue, 10);
-            if (isNaN(parsed) || parsed < highestBid) {
+            if (isNaN(parsed) || parsed <= highestBid) {
               setInputStatus('error');
               setErrorMessage('최고 입찰가보다 높게 제안해 주세요.');
             } else {

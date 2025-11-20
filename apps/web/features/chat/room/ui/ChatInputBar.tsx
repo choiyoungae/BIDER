@@ -5,6 +5,8 @@ import { Camera, SendHorizontal } from 'lucide-react';
 import React, { useEffect, useState, useTransition } from 'react';
 import { sendMessage } from '../api/sendMessage';
 import { Textarea } from '@repo/ui/components/Textarea/Textarea';
+import { ChatImage } from '../types';
+import ImageUploadForChat from './ImageUploadForChat';
 
 const ChatInputBar = ({ shortId, isChatEnd }: { shortId: string; isChatEnd: boolean }) => {
   const [message, setMessage] = useState('');
@@ -12,6 +14,8 @@ const ChatInputBar = ({ shortId, isChatEnd }: { shortId: string; isChatEnd: bool
   const [isFocused, setIsFocused] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [bottomOffset, setBottomOffset] = useState(0);
+  const [isSendImage, setIsSendImage] = useState(false);
+  const [images, setImages] = useState<ChatImage[]>([]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -39,7 +43,11 @@ const ChatInputBar = ({ shortId, isChatEnd }: { shortId: string; isChatEnd: bool
 
     startTransition(async () => {
       try {
-        await sendMessage(shortId, messageToSend, window.location.origin);
+        await sendMessage({
+          chatRoomId: shortId,
+          message: messageToSend,
+          location: window.location.origin,
+        });
       } catch (error) {
         console.error('메시지 전송 실패:', error);
         // 에러 발생 시 메시지 복원
@@ -47,6 +55,23 @@ const ChatInputBar = ({ shortId, isChatEnd }: { shortId: string; isChatEnd: bool
       }
     });
   };
+
+  useEffect(() => {
+    if (images.length > 0) {
+      startTransition(async () => {
+        try {
+          await sendMessage({
+            chatRoomId: shortId,
+            images,
+            location: window.location.origin,
+          });
+          setImages([]); // 전송 후 초기화
+        } catch (error) {
+          console.error('이미지 메시지 전송 실패:', error);
+        }
+      });
+    }
+  }, [images, shortId]);
 
   return (
     <div
@@ -76,9 +101,9 @@ const ChatInputBar = ({ shortId, isChatEnd }: { shortId: string; isChatEnd: bool
           }}
           className="max-h-[157px] flex-1"
         />
-        {/* <button className="ring-0" onClick={() => console.log('picture')} disabled={isChatEnd}>
-          <Camera size={24} className="mx-[15px] mb-[9px] text-neutral-700" />
-        </button> */}
+        <button className="ring-0" onClick={() => setIsSendImage(true)} disabled={isChatEnd}>
+          <Camera size={24} className="mx-[15px] mb-[9px] cursor-pointer text-neutral-700" />
+        </button>
       </div>
       <button
         className={`mb-[9px] ring-0 ${isMessageSendable ? 'cursor-pointer' : ''}`}
@@ -90,6 +115,11 @@ const ChatInputBar = ({ shortId, isChatEnd }: { shortId: string; isChatEnd: bool
           className={isMessageSendable ? 'text-main' : 'text-neutral-700'}
         />
       </button>
+      <ImageUploadForChat
+        open={isSendImage}
+        onImagesChange={setImages}
+        onClose={() => setIsSendImage(false)}
+      />
     </div>
   );
 };

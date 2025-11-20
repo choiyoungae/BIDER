@@ -20,6 +20,10 @@ export const useBidSubmit = (shortId: string) => {
         throw new Error('올바른 입찰가를 입력해주세요.');
       }
 
+      if (bidPriceNumber > 2147483647) {
+        throw new Error('2,147,483,647원 이하로만 입찰할 수 있습니다.');
+      }
+
       if (!user.user?.id) {
         throw new Error('로그인이 필요합니다.');
       }

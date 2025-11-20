@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Input } from '@repo/ui/components/Input/Input';
 import { Textarea } from '@repo/ui/components/Textarea/Textarea';
 import { Button } from '@repo/ui/components/Button/Button';
@@ -15,7 +15,6 @@ import {
   SelectContent,
   SelectItem,
 } from '@repo/ui/components/Select/Select';
-
 import GoogleMap from '@/features/location/ui/GooggleMap';
 import { toast } from '@repo/ui/components/Toast/Sonner';
 import { Switch } from '@repo/ui/components/Switch/Switch';
@@ -24,12 +23,52 @@ import { Info } from 'lucide-react';
 import { useSecretDialog } from '@/features/auction/secret/model/useSecretDialog';
 import { useProductFormWithoutSubmitting } from '@/features/product/model/useProductForm';
 import { useCreateProductWithValidation } from '@/features/product/model/useCreateProduct';
-import { formatPriceInput, isEndDateValid } from '@/features/product/lib/utils';
+import {
+  formatPriceInput,
+  isEndDateValid,
+  canEditProduct,
+  isEndDateAfterInitialDate,
+  validateProductEditForm,
+  isMinPriceValid,
+  parseFormattedPrice,
+} from '@/features/product/lib/utils';
+import { useProductUpdateMutation } from '@/features/product/model/useProductUpdate';
+import {
+  mapProductImagesToUploadedImages,
+  formatProductDateTime,
+  createFormDataFromProduct,
+  handleMinPriceChange,
+} from '@/features/product/lib/editFormUtils';
+import Loading from '@/shared/ui/Loading/Loading';
+import { useQuery } from '@tanstack/react-query';
+import { fetchProductForEdit } from '../api/editProduct';
 
-export const ProductRegistrationForm = () => {
+interface ProductFormProps {
+  mode: 'create' | 'edit';
+  shortId?: string;
+}
+
+export const ProductForm: React.FC<ProductFormProps> = ({ mode, shortId }) => {
   const router = useRouter();
   const user = useAuthStore();
   const { DialogHost, openSecretGuide } = useSecretDialog();
+  const minPriceRef = useRef<HTMLInputElement>(null);
+
+  // Edit 모드일 때만 데이터 가져오기
+  const shouldFetchEditData = mode === 'edit' && !!shortId;
+
+  // useQuery를 조건부로 사용하기 위해 직접 import해서 사용
+  const editQueryResult = useQuery({
+    queryKey: ['product', 'edit', shortId || ''],
+    queryFn: () => fetchProductForEdit(shortId || ''),
+    enabled: shouldFetchEditData, // edit 모드이고 shortId가 있을 때만 실행
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: editData, isLoading: editLoading, error: editError } = editQueryResult;
+
+  // Update mutation (edit 모드일 때만)
+  const { mutate: submitUpdate, isPending: isUpdating } = useProductUpdateMutation(shortId || '');
 
   const {
     // State
@@ -59,21 +98,81 @@ export const ProductRegistrationForm = () => {
     reset,
   } = useProductFormWithoutSubmitting();
 
+  // Create mutation (create 모드일 때만)
   const createProduct = useCreateProductWithValidation({
     onSuccess: () => {
-      // 성공 시 폼 리셋
       reset();
       router.push('/auction/listings');
     },
   });
 
-  const handleMinPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [dealLocationUse, setDealLocationUse] = useState(false);
+
+  // Edit 모드일 때 이미지 매핑 (useMemo로 최적화)
+  const mappedImages = useMemo(() => {
+    if (mode === 'edit' && editData) {
+      return mapProductImagesToUploadedImages(editData.product_image);
+    }
+    return [];
+  }, [mode, editData]);
+
+  // Edit 모드일 때 데이터 초기화
+  useEffect(() => {
+    if (mode === 'edit' && editData) {
+      setTitle(editData.title || '');
+      setCategory(editData.category || '');
+      setDescription(editData.description || '');
+      setMinPrice(editData.min_price ? handleMinPriceChange(editData.min_price.toString()) : '');
+      setDealAddress(editData.deal_address || '');
+      setDealLatitude(editData.deal_latitude?.toString() || '');
+      setDealLongitude(editData.deal_longitude?.toString() || '');
+      setIsSecret(editData.is_secret);
+
+      // 위치 정보가 있으면 거래 장소 사용으로 설정
+      if (editData.deal_latitude !== null && editData.deal_longitude !== null) {
+        setDealLocationUse(true);
+      }
+
+      // 종료 시간 설정
+      if (editData.auction_end_at) {
+        const { date, time } = formatProductDateTime(editData.auction_end_at);
+        setEndDate(date);
+        setEndTime(time);
+      }
+
+      // 이미지 설정
+      const mappedImages = mapProductImagesToUploadedImages(editData.product_image);
+      setImages(mappedImages);
+    }
+  }, [
+    mode,
+    editData,
+    setTitle,
+    setCategory,
+    setDescription,
+    setMinPrice,
+    setDealAddress,
+    setDealLatitude,
+    setDealLongitude,
+    setIsSecret,
+    setEndDate,
+    setEndTime,
+    setImages,
+  ]);
+
+  const handleMinPriceInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatPriceInput(e.target.value);
     setMinPrice(formatted);
   };
 
-  const handleSubmit = () => {
+  const handleCreateSubmit = () => {
     if (!user.user?.id) {
+      return;
+    }
+
+    if (!isMinPriceValid(parseFormattedPrice(minPrice))) {
+      toast({ content: '입찰 시작가의 최대 금액은 2,000,000,000원입니다.' });
+      minPriceRef.current?.focus();
       return;
     }
 
@@ -98,15 +197,75 @@ export const ProductRegistrationForm = () => {
     });
   };
 
-  const isSubmitting = createProduct.isPending;
+  const handleEditSubmit = () => {
+    if (!editData) return;
 
-  const [dealLocationUse, setDealLocationUse] = useState(false);
+    if (!canEditProduct(editData.created_at)) {
+      toast({ content: '상품 수정 가능 시간이 만료되었습니다!' });
+      router.back();
+      return;
+    }
+
+    if (!isMinPriceValid(parseFormattedPrice(minPrice))) {
+      toast({ content: '입찰 시작가의 최대 금액은 2,000,000,000원입니다.' });
+      minPriceRef.current?.focus();
+      return;
+    }
+
+    if (!isEndDateAfterInitialDate(endDate, endTime, editData.created_at)) {
+      toast({ content: '경매 종료일시는 상품 등록 시각 기준으로 1시간 이후여야 합니다.' });
+      return;
+    }
+
+    const formData = {
+      title,
+      category,
+      description,
+      minPrice,
+      endDate,
+      endTime,
+      images,
+      dealLocationUse,
+      dealAddress,
+      dealLatitude: dealLatitude ? Number(dealLatitude) : null,
+      dealLongitude: dealLongitude ? Number(dealLongitude) : null,
+      isSecret,
+    };
+
+    if (!validateProductEditForm(formData)) {
+      toast({ content: '모든 필수 항목을 입력해 주세요' });
+      return;
+    }
+
+    const submitData = createFormDataFromProduct(formData, images);
+
+    submitUpdate(submitData, {
+      onSuccess: () => {
+        toast({ content: '수정이 완료되었습니다!' });
+        router.push('/auction/listings');
+      },
+      onError: () => {
+        toast({ content: '알 수 없는 오류가 발생했어요.' });
+      },
+    });
+  };
+
+  const handleSubmit = mode === 'create' ? handleCreateSubmit : handleEditSubmit;
+  const isSubmitting = mode === 'create' ? createProduct.isPending : isUpdating;
+
+  // Edit 모드 로딩/에러 처리
+  if (mode === 'edit') {
+    if (editLoading) return <Loading />;
+    if (editError)
+      return <p>오류: {editError instanceof Error ? editError.message : '알 수 없는 오류'}</p>;
+    if (shouldFetchEditData && !editData) return <p>상품 정보를 찾을 수 없습니다.</p>;
+  }
 
   return (
     <div className="flex flex-col gap-[26px]">
       <div className="p-box flex flex-col gap-[26px]">
         {/* 사진 업로드 */}
-        <ImageUploadPreview exImages={[]} onImagesChange={setImages} />
+        <ImageUploadPreview exImages={mappedImages} onImagesChange={setImages} />
 
         {/* 상품 제목 */}
         <div className="flex flex-col gap-[10px]">
@@ -153,7 +312,7 @@ export const ProductRegistrationForm = () => {
             자세한 설명<span className="text-main">*</span>
           </div>
           <Textarea
-            name="discription"
+            name="description"
             className="h-[204px]"
             placeholder="상품의 상태, 구매 시기, 사용감 등을 자세히 설명해 주세요."
             value={description}
@@ -171,17 +330,24 @@ export const ProductRegistrationForm = () => {
           {dealLocationUse && (
             <div className="flex flex-col gap-[10px]">
               <div className="typo-caption-regular text-neutral-700">
-                *지도의 핀을 이동해주시고, 입력창에 상세 주소를 입력해주세요.
+                {mode === 'create'
+                  ? '*지도의 핀을 이동해주시고, 입력창에 상세 주소를 입력해주세요.'
+                  : '⁕ 지도의 핀을 이동해주시고, 입력창에 상세 주소를 입력해주세요.'}
               </div>
               <GoogleMap
                 setLocation={(loc: Location) => {
                   setDealLatitude(loc.lat.toString());
                   setDealLongitude(loc.lng.toString());
                 }}
-                setAddress={setDealAddress}
+                setAddress={mode === 'create' ? setDealAddress : undefined}
                 draggable={true}
                 mapId="product-registration"
                 height="h-[300px]"
+                initialLocation={
+                  dealLatitude && dealLongitude
+                    ? { lat: Number(dealLatitude), lng: Number(dealLongitude) }
+                    : undefined
+                }
               />
               <Input
                 name="address"
@@ -216,8 +382,9 @@ export const ProductRegistrationForm = () => {
           <div className="flex items-end">
             <Input
               name="minPrice"
+              ref={minPriceRef}
               value={minPrice}
-              onChange={handleMinPriceChange}
+              onChange={handleMinPriceInputChange}
               placeholder="희망하는 최소 입찰가를 적어주세요."
               required
             />
@@ -261,26 +428,35 @@ export const ProductRegistrationForm = () => {
           disabled={isSubmitting}
           className={`${isSubmitting && 'animate-pulse'}`}
         >
-          {isSubmitting ? '출품 중...' : '출품하기'}
+          {isSubmitting
+            ? mode === 'create'
+              ? '출품 중...'
+              : '수정 중...'
+            : mode === 'create'
+              ? '출품하기'
+              : '수정하기'}
         </Button>
 
-        <div className="bg-warning-light text-warning-medium typo-caption-medium rounded-[3px] p-[14px]">
-          <div className="flex items-center">
-            <Info strokeWidth={2} size={14} />
-            <span className="pl-1">출품 전 안내사항</span>
+        {/* 출품 안내사항 (create 모드일 때만) */}
+        {mode === 'create' && (
+          <div className="bg-warning-light text-warning-medium typo-caption-medium rounded-[3px] p-[14px]">
+            <div className="flex items-center">
+              <Info strokeWidth={2} size={14} />
+              <span className="pl-1">출품 전 안내사항</span>
+            </div>
+            <ul className="list-disc pl-[30px]">
+              <li>상품을 출품하면 1시간 동안 '경매 대기' 상태로 유지됩니다.</li>
+              <li>
+                이 기간 동안에는 상품 목록에 노출되지 않으며, 내 경매 &gt; 출품 내역 페이지에서만
+                확인할 수 있습니다.
+              </li>
+              <li>'경매 대기' 상태에서는 상품 정보를 자유롭게 수정하거나 삭제할 수 있습니다.</li>
+              <li>
+                1시간이 지나면 경매가 시작되며, 이후에는 수정 및 삭제가 불가능하니 주의해 주세요.
+              </li>
+            </ul>
           </div>
-          <ul className="list-disc pl-[30px]">
-            <li>상품을 출품하면 1시간 동안 ‘경매 대기’ 상태로 유지됩니다.</li>
-            <li>
-              이 기간 동안에는 상품 목록에 노출되지 않으며, 내 경매 &gt; 출품 내역 페이지에서만
-              확인할 수 있습니다.
-            </li>
-            <li>‘경매 대기’ 상태에서는 상품 정보를 자유롭게 수정하거나 삭제할 수 있습니다.</li>
-            <li>
-              1시간이 지나면 경매가 시작되며, 이후에는 수정 및 삭제가 불가능하니 주의해 주세요.
-            </li>
-          </ul>
-        </div>
+        )}
       </div>
       <DialogHost />
     </div>

@@ -27,20 +27,30 @@ const ChatItem = ({ data, isLastMsgMine }: ChatItemProps) => {
           </div>
           <div className="relative mt-[6px] w-full">
             {data.last_message ? (
-              <div className="flex">
-                <div
-                  className={`typo-caption-regular max-w-[70%] truncate ${
+              data.last_message.message_type === 'image' ? (
+                <p
+                  className={`typo-caption-regular ${
                     data.last_message?.is_read || isLastMsgMine ? 'text-neutral-400' : ''
                   }`}
                 >
-                  {data.last_message?.content}
+                  사진을 보냈습니다.{' '}
+                </p>
+              ) : (
+                <div className="flex">
+                  <div
+                    className={`typo-caption-regular max-w-[70%] truncate ${
+                      data.last_message?.is_read || isLastMsgMine ? 'text-neutral-400' : ''
+                    }`}
+                  >
+                    {data.last_message?.content}
+                  </div>
+                  <div className="typo-caption-regular ml-[4px] text-neutral-400">
+                    · {getTimeAgo(data.last_message.created_at)}
+                  </div>
                 </div>
-                <div className="typo-caption-regular ml-[4px] text-neutral-400">
-                  · {getTimeAgo(data.last_message.created_at)}
-                </div>
-              </div>
+              )
             ) : (
-              <div className="typo-caption-regular text-neutral-400">아직 대화가 없습니다. </div>
+              <p className="typo-caption-regular text-neutral-400">아직 대화가 없습니다. </p>
             )}
           </div>
         </div>

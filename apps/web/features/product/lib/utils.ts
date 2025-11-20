@@ -95,6 +95,12 @@ export const isEndDateValid = (endDate: string, endTime: string): boolean => {
   return end > oneHourLater;
 };
 
+export const isMinPriceValid = (minPrice: number): boolean => {
+  if (!minPrice) return false;
+
+  return minPrice > 0 && minPrice <= 2000000000;
+};
+
 export function isEndDateAfterInitialDate(
   endDate: string,
   endTime: string,

@@ -31,26 +31,32 @@ const MessageList = ({
   const prevMessageCountRef = useRef(0);
   const userId = useAuthStore((state) => state.user?.id) as string;
   const router = useRouter();
+  const hasInitialScrolled = useRef(false); // 초기 스크롤 완료 여부
 
   useMessageRealtime(shortId);
 
   // 초기 로드 시 스크롤
   useEffect(() => {
-    if (data && data.length > 0) {
-      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+    if (data && data.length > 0 && !isLoading && !hasInitialScrolled.current) {
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+        hasInitialScrolled.current = true;
+      }, 100);
       prevMessageCountRef.current = data.length;
+      setMessagesRead(shortId);
     }
-    setMessagesRead(shortId);
-  }, [isLoading]); // isLoading이 false가 될 때 실행
+  }, [data, isLoading, shortId]);
 
   // 새 메시지가 추가될 때 스크롤
   useEffect(() => {
-    if (data && data.length > prevMessageCountRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (data && data.length > prevMessageCountRef.current && hasInitialScrolled.current) {
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
       prevMessageCountRef.current = data.length;
+      setMessagesRead(shortId);
     }
-    setMessagesRead(shortId);
-  }, [data?.length]);
+  }, [data?.length, shortId]);
 
   if (isLoading) return <Loading />;
   if (error) return <p>오류: {(error as Error).message}</p>;
@@ -76,9 +82,13 @@ const MessageList = ({
   return (
     <div className="p-box custom-scrollbar flex-1 overflow-y-auto">
       {data?.map((message: CombinedMessage, index) => {
+        const isLastMessage = index === messages.length - 1;
         if (message.messageType === 'system') {
           return (
-            <div key={message.system_message_id}>
+            <div
+              key={message.system_message_id}
+              className={isLastMessage && index > 0 ? 'mt-[30px]' : ''}
+            >
               {index === 0 && <DateDivider isoDate={message.created_at} />}
               <BidWinMessage data={message} />
             </div>
@@ -104,7 +114,6 @@ const MessageList = ({
               currentDate.getDate() !== prevDate.getDate()
             : false;
 
-          const isLastMessage = index === messages.length - 1;
           const isNextSameTime = nextDate
             ? currentDate.getHours() === nextDate.getHours() &&
               currentDate.getMinutes() === nextDate.getMinutes()
@@ -147,6 +156,8 @@ const MessageList = ({
                   time={message.created_at}
                   isRead={message.is_read}
                   isLast={isLastMessage}
+                  isImage={message.message_type === 'image'}
+                  images={message.images}
                 />
               ) : (
                 <YourMessage
@@ -165,6 +176,8 @@ const MessageList = ({
                   showAvatar={isDifferentDay || !isSameUserTalking}
                   time={message.created_at}
                   avatar={message.profile?.profile_img}
+                  isImage={message.message_type === 'image'}
+                  images={message.images}
                 />
               )}
             </div>
